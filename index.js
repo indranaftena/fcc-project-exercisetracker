@@ -66,11 +66,11 @@ app
   })
 
 app.post('/api/users/:_id/exercises', (req, res) => {
-  User.findOne({ _id: req.body._id })
+  User.findOne({ _id: req.params._id })
     .then(doc => {
       if (doc) {
         let newEx = new Exercise({
-          userId: req.body._id,
+          userId: req.params._id,
           description: req.body.description,
           duration: req.body.duration,
           date: req.body.date ? req.body.date : new Date()
@@ -125,9 +125,9 @@ app.get('/api/users/:_id/logs', (req, res) => {
           .limit(limit)
           .then(data => {
             res.json({
+              _id: req.params._id,
               username: doc.username,
               count: data.length,
-              _id: req.params._id,
               log: data.map(({ description, duration, date }) =>
                 ({ description, duration, date: date.toDateString() }))
             })
