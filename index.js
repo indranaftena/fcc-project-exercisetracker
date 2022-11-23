@@ -12,13 +12,16 @@ app.use(express.static('public'))
 app.use(bodyParser.urlencoded({ extended: false }));
 
 // connect to MongoDB
-mongoose.connect(myURI, {useNewUrlParser: true, useUnifiedTopology: true})
+mongoose.connect(myURI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  useFindAndModify: false
+})
 
 // create schema and model
 let userSchema = new mongoose.Schema({
   username: {
-    type: String,
-    unique: true
+    type: String
   },
 })
 let exerciseSc = new mongoose.Schema({
@@ -35,54 +38,117 @@ app.get('/', (req, res) => {
 });
 
 app
-.route('/api/users')
-.get((req, res) => {
-  User.find()
-  .then( doc => {
-    res.json(doc)
+  .route('/api/users')
+  .get((req, res) => {
+    User.find()
+      .then(doc => {
+        res.json(doc)
+      })
+      .catch(err => {
+        res.json({
+          message: 'there is a problem when query users data',
+          error: err
+        })
+      })
   })
-  .catch( err => {
-    res.json({
-      message: 'there is a problem when query users data',
-      error: err
-    })
+  .post((req, res) => {
+    User.findOneAndUpdate(req.body, req.body, { new: true, upsert: true })
+      .select({ username: 1, _id: 1 })
+      .then(doc => {
+        res.json(doc)
+      })
+      .catch(err => {
+        res.json({
+          message: "there's problem when finding user",
+          error: err
+        })
+      })
   })
-})
-.post((req, res) => {
-  User.findOneAndUpdate(req.body, req.body, { new: true, upsert: true })
-  .select({ username: 1, _id: 1})
-  .then( doc => {
-    res.json(doc)
-  })
-  .catch( err => {
-    res.json({
-      error: err
-    })
-  })
-})
 
 app.post('/api/users/:_id/exercises', (req, res) => {
-  newEx = new Exercise({
-    userId: req.body._id,
-    description: req.body.description,
-    duration: req.body.duration,
-    date: req.body.date
-  })
-  newEx.save()
-  .then( doc => {
-    res.json(doc)
-  })
-  .catch( err => {
-    res.json({
-      error: err
+  User.findOne({ _id: req.body._id })
+    .then(doc => {
+      if (doc) {
+        let newEx = new Exercise({
+          userId: req.body._id,
+          description: req.body.description,
+          duration: req.body.duration,
+          date: req.body.date ? req.body.date : new Date()
+        })
+
+        newEx.save()
+          .then(inf => {
+            res.json({
+              username: doc.username,
+              description: inf.description,
+              duration: inf.duration,
+              date: inf.date.toDateString(),
+              _id: doc._id
+            })
+          })
+          .catch(err => {
+            res.json({
+              error: err
+            })
+          })
+      }
+      else {
+        res.json({
+          message: "user can't be found"
+        })
+      }
     })
-  })
+    .catch(err => {
+      res.json({
+        message: "there's problem when finding user, try again later",
+        error: err
+      })
+    })
 })
 
 app.get('/api/users/:_id/logs', (req, res) => {
-  res.json({
-    message: 'coming soon'
-  })
+  let from = req.query.from
+  let to = req.query.to
+  let limit = parseInt(req.query.limit)
+  let condition = { userId: req.params._id }
+
+  if (from || to) {
+    condition.date = {}
+    if (from) condition.date['$gte'] = from
+    if (to) condition.date['$lte'] = to
+  }
+
+  User.findOne({ _id: req.params._id })
+    .then(doc => {
+      if (doc) {
+        Exercise.find(condition)
+          .limit(limit)
+          .then(data => {
+            res.json({
+              username: doc.username,
+              count: data.length,
+              _id: req.params._id,
+              log: data.map(({ description, duration, date }) =>
+                ({ description, duration, date: date.toDateString() }))
+            })
+          })
+          .catch(err => {
+            res.json(err)
+          })
+      }
+      else {
+        res.json({
+          message: "can't find the user"
+        })
+      }
+    })
+    .catch(err => {
+      res.json({
+        message: "there's problem when finding the user",
+        error: err
+      })
+    })
+
 })
 
 const listener = app.listen(process.env.PORT || 3000, () => {
